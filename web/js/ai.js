@@ -29,32 +29,31 @@ function chooseDiscard(hand, openMelds, level, visible, seat, discardsAll) {
     }
   }
   if (level >= 4 && discardsAll) {
-    // 简化危险度：现物=0，否则按别人是否切过/筋粗估
-    let safest = best, safestDanger = Infinity;
-    for (const t of uniq) {
-      let danger = 0;
+    // 简化危险度：现物=0，否则 1 起按筋（同花色 ±3 筋）递减
+    const dangerOf = (t) => {
       for (let p = 0; p < 4; p++) {
         if (p === seat) continue;
-        const ds = discardsAll[p] || [];
-        if (ds.includes(t)) { danger = -1; break; }
+        if ((discardsAll[p] || []).includes(t)) return 0; // 现物
       }
-      if (danger === -1) danger = 0;
-      else {
-        danger = 1;
+      let d = 1;
+      if (t < 27) {
+        const r = t % 9;
         for (let p = 0; p < 4; p++) {
           if (p === seat) continue;
           const ds = discardsAll[p] || [];
-          if (ds.includes((t + 3) % 34) || ds.includes((t - 3 + 34) % 34)) danger -= 0.5;
+          if ((r <= 5 && ds.includes(t + 3)) || (r >= 3 && ds.includes(t - 3))) d -= 0.4;
         }
-        danger = Math.max(0.2, danger);
       }
-      counts[t]--;
-      const s = M.shanten(counts, openMelds);
-      counts[t]++;
-      const score = s * 10 + danger;
-      if (score < safestDanger + s * 0 - 0) { /* keep shanten priority */ }
-      if (s < M.shanten(M.countsOf(hand.filter(x => x !== best)), openMelds)) { safest = best; break; }
-      if (danger < safestDanger - 1.5 && s <= -bestKey[0]) { safestDanger = danger; safest = t; }
+      return Math.max(0.2, d);
+    };
+    const shantenAfter = (t) => { counts[t]--; const s = M.shanten(counts, openMelds); counts[t]++; return s; };
+    const bestS = shantenAfter(best);
+    let safest = best, safestScore = bestS * 10 + dangerOf(best);
+    for (const t of uniq) {
+      const s = shantenAfter(t);
+      if (s > bestS) continue; // 不牺牲向听换安全
+      const score = s * 10 + dangerOf(t);
+      if (score < safestScore) { safestScore = score; safest = t; }
     }
     return safest;
   }
