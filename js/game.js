@@ -1,3 +1,4 @@
+(() => {
 /* Super Grand Slam Online · 网页版对局流程
  * 半庄 8 局（東1-南4）+ 连庄，无需后端，浏览器/Node 共用。
  * UI 驱动接口 ui = { chooseDiscard, chooseCall, onEvent }
@@ -470,3 +471,5 @@ class Match {
 
 if (typeof module !== "undefined") module.exports = { Match, ROUND_NAMES, SEAT_MARKS, NAMES };
 else window.MahjongMatch = { Match, ROUND_NAMES, SEAT_MARKS, NAMES };
+
+})();
