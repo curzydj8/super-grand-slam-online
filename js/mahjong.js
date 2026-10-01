@@ -399,4 +399,12 @@ if (typeof module !== "undefined") {
     detectYaku, calculateFu, calculateScore, checkAgari, ukeireCount,
     winningTiles, doraTile, decomposeStandard,
   };
+} else if (typeof window !== "undefined") {
+  window.Mahjong = {
+    EAST, SOUTH, WEST, NORTH, HAKU, HATSU, CHUN,
+    tileName, tileShort, tileRank, isTerminalOrHonor, countsOf,
+    createWall, deal, isWinning, isChiitoi, isKokushi, shanten,
+    detectYaku, calculateFu, calculateScore, checkAgari, ukeireCount,
+    winningTiles, doraTile, decomposeStandard,
+  };
 }
