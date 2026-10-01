@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>超级大满贯 Online · 街机麻将</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 标题画面 -->
+  <section id="screen-title" class="screen">
+    <div class="title-inner">
+      <div class="game-logo">🀄</div>
+      <h1 class="game-title">超级大满贯</h1>
+      <div class="game-sub">SUPER GRAND SLAM <span>ONLINE</span></div>
+      <p class="game-desc">街机麻将 · 单机 AI 对战 · 半庄八局</p>
+      <div class="diff-select" id="diff-select">
+        <button class="diff-btn" data-lv="1"><b>Lv.1</b><span>新手</span></button>
+        <button class="diff-btn active" data-lv="2"><b>Lv.2</b><span>进阶</span></button>
+        <button class="diff-btn" data-lv="3"><b>Lv.3</b><span>雀豪</span></button>
+        <button class="diff-btn" data-lv="4"><b>Lv.4</b><span>雀圣</span></button>
+      </div>
+      <button id="btn-start" class="btn-start">开 局 ！</button>
+      <div class="title-foot">
+        <p>🖱️ 点击手牌切出 · 吃/碰/杠/立直/和牌会有按钮提示</p>
+        <p>规则：日本立直麻将 · 25000 点开局 · 半庄（東一局～南四局）</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 对局画面 -->
+  <section id="screen-game" class="screen hidden">
+    <header id="topbar">
+      <div class="tb-item"><span class="tb-label">局</span><b id="tb-round">東一局</b></div>
+      <div class="tb-item"><span class="tb-label">本场</span><b id="tb-honba">0</b></div>
+      <div class="tb-item"><span class="tb-label">供托</span><b id="tb-sticks">0</b></div>
+      <div class="tb-item"><span class="tb-label">余</span><b id="tb-wall">69</b></div>
+      <div class="tb-item dora"><span class="tb-label">宝牌</span><span id="tb-dora"></span></div>
+    </header>
+
+    <main id="table">
+      <div class="center-info">
+        <div id="center-wind">東</div>
+        <div id="center-msg">对局开始</div>
+      </div>
+      <div class="p-panel" id="panel-2"></div>
+      <div class="p-panel" id="panel-1"></div>
+      <div class="p-panel" id="panel-3"></div>
+      <div class="p-panel me" id="panel-0"></div>
+    </main>
+
+    <footer id="bottombar">
+      <div id="my-melds"></div>
+      <div id="my-hand"></div>
+      <div id="action-bar"></div>
+    </footer>
+  </section>
+
+  <!-- 弹窗 -->
+  <div id="modal" class="hidden">
+    <div id="modal-box"></div>
+  </div>
+  <div id="banner" class="hidden"></div>
+</div>
+
+<script src="js/mahjong.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
