@@ -1,3 +1,4 @@
+(() => {
 /* Super Grand Slam Online · 网页版 AI（由 backend/app/core/ai.py 移植） */
 "use strict";
 const M = (typeof module !== "undefined")
@@ -122,3 +123,5 @@ function decideRiichi(hand, openMelds, score, level) {
 const AI = { chooseDiscard, decidePon, decideChi, decideClosedKan, decideRiichi };
 if (typeof module !== "undefined") module.exports = AI;
 else window.MahjongAI = AI;
+
+})();
