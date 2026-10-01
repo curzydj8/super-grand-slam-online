@@ -24,6 +24,7 @@ class BrowserUI {
     this.match = match;
     this.M = window.Mahjong;
     this.G = window.MahjongMatch;
+    this.riichiTileIdx = [-1, -1, -1, -1];
     this.riichiPending = -1;
     this.myDrawn = -1;
     this.turnSeat = -1;
@@ -318,6 +319,14 @@ class BrowserUI {
 
 /* ---------- 启动 ---------- */
 (function boot() {
+  // 模块自检：任一脚本没加载成功就直接在标题屏报错，而不是点开始没反应
+  const missing = ["Mahjong", "MahjongAI", "MahjongMatch"].filter(k => !window[k]);
+  if (missing.length) {
+    document.querySelector(".title-foot").innerHTML =
+      `<p style="color:#ff8a8a">⚠️ 游戏模块加载失败（${missing.join(", ")}），请刷新重试</p>`;
+    document.getElementById("btn-start").disabled = true;
+    return;
+  }
   let lv = 2;
   document.querySelectorAll(".diff-btn").forEach(b => {
     b.onclick = () => {
@@ -338,6 +347,7 @@ class BrowserUI {
     } catch (e) {
       console.error(e);
       ui.msg("对局出现异常，请刷新重试");
+      ui.setActionBar(`<div id="action-hint" style="color:#ff8a8a">出错了：${(e && e.message) || e}，请刷新页面</div>`);
     }
   };
 })();
