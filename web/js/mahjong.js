@@ -1,3 +1,4 @@
+(() => {
 /* Super Grand Slam Online · 网页版麻将引擎
  * 由 backend/app/core/mahjong.py 忠实移植，规则见 docs/rules.md
  * 牌编码 0-33：0-8万 / 9-17筒 / 18-26条 / 27-30东南西北 / 31-33白发中
@@ -408,3 +409,5 @@ if (typeof module !== "undefined") {
     winningTiles, doraTile, decomposeStandard,
   };
 }
+
+})();
