@@ -4,6 +4,7 @@
  */
 "use strict";
 const M = (typeof module !== "undefined") ? require("./mahjong.js") : window.Mahjong;
+const AI = (typeof module !== "undefined") ? require("./ai.js") : window.MahjongAI;
 
 const NAMES = ["你", "AI·松", "AI·竹", "AI·梅"];
 const ROUND_NAMES = ["東一局", "東二局", "東三局", "東四局", "南一局", "南二局", "南三局", "南四局"];
@@ -44,7 +45,8 @@ class Match {
     const wall = M.createWall((this.rng() * 1e9) | 0);
     const { hands, rest } = M.deal(wall);
     this.players = [0, 1, 2, 3].map(s => this.newPlayer(s));
-    this.players.forEach((p, i) => { p.hand = hands[i]; });
+    // deal() 总是把 14 张（庄家牌）放在 hands[0]，把它交到真正的庄家手里
+    this.players.forEach((p, i) => { p.hand = hands[(i - this.dealer + 4) % 4]; });
     this.deadWall = rest.slice(-14);
     this.wall = rest.slice(0, -14);
     this.rinshanIdx = 0;
@@ -91,18 +93,35 @@ class Match {
 
   discardOptions(seat, drawn) {
     const p = this.players[seat];
-    const counts = M.countsOf(p.hand);
-    counts[drawn]--;
-    const ctx = this.winCtx(seat, { tsumo: true, haitei: this.wall.length === 0 });
-    const tsumo = M.checkAgari(counts, p.melds, drawn, ctx, seat === this.dealer);
+    const full = M.countsOf(p.hand);          // 含摸牌的完整手牌
+    const counts = full.slice();
+    let tsumo = null;
+    if (drawn >= 0) {
+      counts[drawn]--;
+      const ctx = this.winCtx(seat, { tsumo: true, haitei: this.wall.length === 0 });
+      tsumo = M.checkAgari(counts, p.melds, drawn, ctx, seat === this.dealer);
+    }
+    // 杠：用完整手牌判定（不会漏掉"刚摸到第 4 张"的暗杠）；全场最多 4 个杠
     const kans = [];
-    for (let t = 0; t < 34; t++) if (counts[t] === 4) kans.push({ kind: "closed", tile: t });
-    for (const m of p.melds)
-      if (m.kind === "pon" && p.hand.includes(m.tiles[0])) kans.push({ kind: "added", tile: m.tiles[0] });
+    if (this.kanCount < 4) {
+      for (let t = 0; t < 34; t++) if (full[t] === 4) kans.push({ kind: "closed", tile: t });
+      for (const m of p.melds)
+        if (m.kind === "pon" && p.hand.includes(m.tiles[0])) kans.push({ kind: "added", tile: m.tiles[0] });
+    }
+    // 立直：门前、未立直、有 1000 点、余 4 张以上，且存在一张切出后听牌的牌
     const menzen = p.melds.every(m => m.concealed);
-    const canRiichi = !p.riichi && menzen && p.hand.length === 14 &&
-      this.scores[seat] >= 1000 && this.wall.length >= 4 &&
-      M.shanten(counts, p.melds.filter(m => !m.concealed).length) === 0;
+    const openN = p.melds.filter(m => !m.concealed).length;
+    let canRiichi = false;
+    if (!p.riichi && menzen && p.hand.length % 3 === 2 &&
+        this.scores[seat] >= 1000 && this.wall.length >= 4) {
+      // 从完整手牌逐张试切：存在切出后听牌的牌即可立直
+      for (const t of [...new Set(p.hand)]) {
+        full[t]--;
+        if (M.shanten(full, openN) === 0) canRiichi = true;
+        full[t]++;
+        if (canRiichi) break;
+      }
+    }
     return { drawn, tsumo, kans, canRiichi, locked: p.riichi };
   }
 
@@ -129,7 +148,7 @@ class Match {
   async playRound(ui) {
     this.setupRound();
     await ui.onEvent({ t: "round_start", round: ROUND_NAMES[this.round], honba: this.honba, sticks: this.sticks, dealer: this.dealer, dora: this.doraIndicators.slice() });
-    await this.turnLoop(this.dealer, ui);
+    await this.turnLoop(this.dealer, ui, true);
   }
 
   async declareRiichi(seat, ui) {
@@ -181,7 +200,7 @@ class Match {
     const ron = this.ronOption(seat, tile, fromSeat);
     if (ron) opts.push({ type: "ron", label: `荣和 ${ron.han}翻${ron.fu}符`, result: ron });
     if (counts[tile] >= 2) opts.push({ type: "pon", label: `碰 ${M.tileShort(tile)}` });
-    if (counts[tile] >= 3 && this.wall.length > 0) opts.push({ type: "kan", label: `杠 ${M.tileShort(tile)}` });
+    if (counts[tile] >= 3 && this.wall.length > 0 && this.kanCount < 4) opts.push({ type: "kan", label: `杠 ${M.tileShort(tile)}` });
     if (seat === (fromSeat + 1) % 4 && tile < 27) {
       const r = M.tileRank(tile), suit = (tile / 9) | 0;
       const has = (a, b) => (a / 9 | 0) === suit && (b / 9 | 0) === suit && counts[a] && counts[b];
@@ -194,6 +213,9 @@ class Match {
 
   async checkCalls(fromSeat, tile, ui) {
     const order = [1, 2, 3].map(i => (fromSeat + i) % 4);
+    const fromP = this.players[fromSeat];
+    // 被副露的牌从牌河拿走（永远是牌河最后一张）
+    const takeCalledTile = () => { fromP.discards.pop(); };
     // 荣和优先（按摸牌顺序）
     for (const s of order) {
       const res = this.ronOption(s, tile, fromSeat);
@@ -202,6 +224,8 @@ class Match {
         return "win";
       }
     }
+    // 立直后的打牌不能被吃/碰/杠（只能荣和）
+    if (!fromP.riichi) {
     // 碰 / 杠
     for (const s of order) {
       const p = this.players[s];
@@ -212,12 +236,13 @@ class Match {
           const opts = this.callOptions(s, tile, fromSeat).filter(o => o.type === "pon" || o.type === "kan");
           if (opts.length) { const a = await ui.chooseCall(s, tile, fromSeat, opts); if (a) want = a.type; }
         } else {
-          const AI = (typeof require !== "undefined") ? require("./ai.js") : window.MahjongAI;
           const lv = this.aiLevels[s];
-          if (counts[tile] >= 3 && this.wall.length > 0 && lv >= 2 && Math.random() < 0.6) want = "kan";
+          if (counts[tile] >= 3 && this.wall.length > 0 && this.kanCount < 4 && lv >= 2 && Math.random() < 0.6) want = "kan";
           else if (AI.decidePon(p.hand, tile, lv, this.seatWind(s), this.roundWind())) want = "pon";
         }
         if (want === "kan") {
+          takeCalledTile();
+          this.clearIppatsu(); this.anyCall = true;
           this.removeFromHand(s, tile, 3);
           p.melds.push({ kind: "open_kan", tiles: [tile, tile, tile, tile], from: fromSeat, concealed: false });
           await ui.onEvent({ t: "kan", seat: s, kind: "open", tile, from: fromSeat, dora: this.doraIndicators.slice() });
@@ -229,6 +254,7 @@ class Match {
           return "done";
         }
         if (want === "pon") {
+          takeCalledTile();
           this.removeFromHand(s, tile, 2);
           p.melds.push({ kind: "pon", tiles: [tile, tile, tile], from: fromSeat, concealed: false });
           await ui.onEvent({ t: "pon", seat: s, tile, from: fromSeat });
@@ -240,7 +266,6 @@ class Match {
     const shimo = (fromSeat + 1) % 4;
     const p = this.players[shimo];
     if (!p.riichi) {
-      const AI = (typeof require !== "undefined") ? require("./ai.js") : window.MahjongAI;
       const lv = this.isHuman(shimo) ? 99 : this.aiLevels[shimo];
       let chiTiles = null;
       if (this.isHuman(shimo)) {
@@ -253,12 +278,14 @@ class Match {
         chiTiles = AI.decideChi(p.hand, tile, lv);
       }
       if (chiTiles) {
+        takeCalledTile();
         this.removeFromHand(shimo, chiTiles[0]); this.removeFromHand(shimo, chiTiles[1]);
         p.melds.push({ kind: "chi", tiles: [chiTiles[0], chiTiles[1], tile].sort((a, b) => a - b), from: fromSeat, concealed: false });
         await ui.onEvent({ t: "chi", seat: shimo, tiles: chiTiles, tile, from: fromSeat });
         return shimo;
       }
     }
+    } // end if (!fromP.riichi)
     return null;
   }
 
@@ -280,6 +307,7 @@ class Match {
       if (act.type === "kan") {
         const kres = await this.applySelfKan(seat, act, ui);
         if (kres === "chankan_win") return;
+        this.clearIppatsu(); this.anyCall = true;
         drawn = this.rinshanDraw(); p.hand.push(drawn);
         await ui.onEvent({ t: "rinshan", seat, tile: this.isHuman(seat) ? drawn : -1, dora: this.doraIndicators.slice() });
         continue;
@@ -290,7 +318,7 @@ class Match {
       await ui.onEvent({ t: "discard", seat, tile: act.tile, riichi: act.type === "riichi" });
       const callRes = await this.checkCalls(seat, act.tile, ui);
       if (callRes === "win" || callRes === "done") return;
-      if (callRes) { await this.afterCallDiscard(callRes, ui); return; }
+      if (callRes !== null) { await this.afterCallDiscard(callRes, ui); return; }
       await this.turnLoop((seat + 1) % 4, ui); return;
     }
   }
@@ -305,21 +333,28 @@ class Match {
     await ui.onEvent({ t: "discard", seat, tile: act.tile });
     const callRes = await this.checkCalls(seat, act.tile, ui);
     if (callRes === "win" || callRes === "done") return;
-    if (callRes) { await this.afterCallDiscard(callRes, ui); return; }
+    if (callRes !== null) { await this.afterCallDiscard(callRes, ui); return; }
     await this.turnLoop((seat + 1) % 4, ui);
   }
 
-  /* 主循环（供副露后跳转） */
-  async turnLoop(turn, ui) {
+  /* 主循环（供副露后跳转）；skipDraw=true 时首巡不摸牌（庄家起手 14 张直接切） */
+  async turnLoop(turn, ui, skipDraw = false) {
     let result = null;
+    let first = skipDraw;
     while (!result) {
       if (this.wall.length === 0) { await this.exhaustive(ui); break; }
       const p = this.players[turn];
       this.turnCount++;
-      const tile = this.wall.shift();
-      p.hand.push(tile);
-      await ui.onEvent({ t: "draw", seat: turn, tile: this.isHuman(turn) ? tile : -1 });
-      let drawn = tile, rinshan = false;
+      let drawn = -1, rinshan = false;
+      if (first) {
+        first = false;
+        await ui.onEvent({ t: "draw", seat: turn, tile: -1, firstTurn: true });
+      } else {
+        const tile = this.wall.shift();
+        p.hand.push(tile);
+        drawn = tile;
+        await ui.onEvent({ t: "draw", seat: turn, tile: this.isHuman(turn) ? tile : -1 });
+      }
       for (;;) {
         const opts = this.discardOptions(turn, drawn);
         const act = this.isHuman(turn)
@@ -327,7 +362,7 @@ class Match {
           : this.aiDiscardAction(turn, p.hand, opts);
         if (act.type === "tsumo") {
           const counts = M.countsOf(p.hand); counts[drawn]--;
-          const res = M.checkAgari(counts, p.melds, drawn, this.winCtx(turn, { tsumo: true, rinshan }), turn === this.dealer);
+          const res = M.checkAgari(counts, p.melds, drawn, this.winCtx(turn, { tsumo: true, rinshan, haitei: this.wall.length === 0 }), turn === this.dealer);
           await this.applyWin(turn, null, drawn, res, ui); result = { win: true }; break;
         }
         if (act.type === "kan") {
@@ -347,13 +382,12 @@ class Match {
       if (result) break;
       const callRes = await this.checkCalls(turn, p.discards[p.discards.length - 1], ui);
       if (callRes === "win" || callRes === "done") break;
-      if (callRes) { await this.afterCallDiscard(callRes, ui); break; }
+      if (callRes !== null) { await this.afterCallDiscard(callRes, ui); break; }
       turn = (turn + 1) % 4;
     }
   }
 
   aiDiscardAction(seat, hand, opts) {
-    const AI = (typeof require !== "undefined") ? require("./ai.js") : window.MahjongAI;
     const lv = this.aiLevels[seat];
     const p = this.players[seat];
     if (opts.tsumo) return { type: "tsumo" };
